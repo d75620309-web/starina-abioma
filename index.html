@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#080706">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Старина">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Старина / ABIOMA</title>
+<style>
+:root{--gold:#d6a94c;--bright:#f1cf79;--line:rgba(214,169,76,.50)}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#050505;color:#eee;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input{font:inherit}.screen{position:fixed;inset:0;overflow:hidden;background:#050505}
+.bg{position:absolute;inset:0;background:url('chat.jpg') center/cover no-repeat}
+.shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.26) 47%,rgba(0,0,0,.90))}
+.chat-ui{position:absolute;inset:0;display:flex;flex-direction:column;padding:calc(18px + env(safe-area-inset-top)) 16px calc(10px + env(safe-area-inset-bottom))}
+.top{display:flex;align-items:center;justify-content:space-between;color:var(--bright);text-shadow:0 2px 12px #000}
+.title{font:28px Georgia,serif;letter-spacing:.08em}.sub{font-size:12px;color:#c49b4a;margin-top:2px}
+.logo{width:54px;height:54px;border-radius:12px;border:1px solid var(--gold);object-fit:cover}
+.messages{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:10px;padding:18px 0 12px;overflow:auto}
+.bubble{max-width:84%;padding:13px 15px;border-radius:18px;line-height:1.42;background:rgba(8,8,8,.84);border:1px solid rgba(214,169,76,.36);box-shadow:0 8px 24px rgba(0,0,0,.35);white-space:pre-wrap}
+.me{align-self:flex-end;background:linear-gradient(135deg,rgba(126,87,24,.94),rgba(72,48,16,.94));color:#fff}
+.inputbar{display:flex;align-items:center;gap:8px;background:rgba(7,7,7,.94);border:1px solid var(--line);border-radius:24px;padding:7px 8px}
+.inputbar input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:white;padding:10px;font-size:16px}
+.round{width:44px;height:44px;border-radius:50%;border:1px solid var(--gold);background:#15100a;color:var(--bright);font-size:18px}
+.round.live{box-shadow:0 0 0 5px rgba(214,169,76,.18);background:#4b260f}
+.nav{display:flex;justify-content:space-around;margin-top:8px;padding:9px 3px 2px;border-top:1px solid rgba(214,169,76,.2);font-size:11px;color:#9b8a69}.nav .on{color:var(--bright)}
+.small{font-size:11px;color:#9c875c;text-align:center;margin-top:6px}
+.install{position:absolute;right:16px;top:calc(88px + env(safe-area-inset-top));z-index:3;border:1px solid rgba(214,169,76,.38);background:rgba(8,8,8,.78);color:#d7bd7a;border-radius:13px;padding:8px 11px;font-size:12px}
+</style>
+</head>
+<body>
+<section class="screen">
+ <div class="bg"></div><div class="shade"></div>
+ <button class="install" onclick="installHelp()">На экран iPhone</button>
+ <div class="chat-ui">
+  <div class="top">
+    <div><div class="title">СТАРИНА</div><div class="sub">Всегда на твоей стороне</div></div>
+    <img class="logo" src="icon-192.png" alt="ABIOMA">
+  </div>
+  <div id="messages" class="messages">
+    <div class="bubble">Привет, Дима.
+Я Старина. Я здесь. О чём поговорим?</div>
+  </div>
+  <div class="inputbar">
+    <button id="mic" class="round" onclick="toggleVoice()" aria-label="Голос">🎙</button>
+    <input id="msg" placeholder="Напиши Старине…" autocomplete="off">
+    <button class="round" onclick="sendText()" aria-label="Отправить">➤</button>
+  </div>
+  <div class="small" id="state">Текст · голос · память</div>
+  <div class="nav"><span class="on">● Разговор</span><span>Проекты</span><span>Изображения</span><span>Идеи</span></div>
+ </div>
+</section>
+<script>
+const msg=document.getElementById('msg'),messages=document.getElementById('messages'),state=document.getElementById('state'),mic=document.getElementById('mic');
+const sessionId=localStorage.getItem('starina_session')||crypto.randomUUID();
+localStorage.setItem('starina_session',sessionId);
+let recorder=null,chunks=[],stream=null;
+
+function add(text,cls=''){let d=document.createElement('div');d.className='bubble '+cls;d.textContent=text;messages.appendChild(d);messages.scrollTop=messages.scrollHeight}
+
+async function speak(text){
+  try{
+    const r=await fetch('/api/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    if(!r.ok) return;
+    const blob=await r.blob();
+    const audio=new Audio(URL.createObjectURL(blob));
+    await audio.play();
+  }catch(e){}
+}
+
+async function ask(text){
+  add(text,'me'); state.textContent='Старина думает…';
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,sessionId})});
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.error||'Ошибка');
+    add(data.reply); state.textContent='Текст · голос · память';
+    speak(data.reply);
+  }catch(e){
+    add('Связь с OpenAI пока не активирована на сервере. Нужен сервер с API-ключом.');
+    state.textContent='Нужно подключение API';
+  }
+}
+
+function sendText(){let t=msg.value.trim();if(!t)return;msg.value='';ask(t)}
+msg.addEventListener('keydown',e=>{if(e.key==='Enter')sendText()});
+
+async function toggleVoice(){
+  if(recorder && recorder.state==='recording'){ recorder.stop(); return; }
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    chunks=[];
+    recorder=new MediaRecorder(stream);
+    recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+    recorder.onstart=()=>{mic.classList.add('live');state.textContent='Говори… Нажми ещё раз, чтобы отправить'};
+    recorder.onstop=async()=>{
+      mic.classList.remove('live');state.textContent='Распознаю голос…';
+      stream.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});
+      const fd=new FormData();fd.append('audio',blob,'voice.webm');
+      try{
+        const r=await fetch('/api/transcribe',{method:'POST',body:fd});
+        const data=await r.json();
+        if(!r.ok) throw new Error(data.error||'Ошибка распознавания');
+        if(data.text) ask(data.text); else state.textContent='Ничего не расслышал';
+      }catch(e){add('Не удалось распознать голос.');state.textContent='Ошибка голоса'}
+    };
+    recorder.start();
+  }catch(e){
+    add('Для голосового режима разреши доступ к микрофону в Safari.');
+    state.textContent='Нужен доступ к микрофону';
+  }
+}
+
+function installHelp(){
+  add('Чтобы вынести Старину на главный экран iPhone: открой опубликованный сайт в Safari → кнопка «Поделиться» → «На экран Домой» → «Добавить».');
+}
+
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+</script>
+</body></html>
